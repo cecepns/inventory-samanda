@@ -3,7 +3,7 @@ import { FileText, Download, Calendar, Package, TrendingUp, TrendingDown } from 
 import { reportAPI } from '../../services/api';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 const Reports = () => {
   const [activeTab, setActiveTab] = useState('stock');
@@ -141,7 +141,7 @@ const Reports = () => {
     doc.text(`Dicetak pada: ${new Date().toLocaleDateString('id-ID')}`, 20, 45);
     
     // Table
-    doc.autoTable({
+    autoTable(doc, {
       head: [columns],
       body: rows,
       startY: 55,
