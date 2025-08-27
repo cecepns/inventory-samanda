@@ -949,6 +949,77 @@ app.get('/api/purchases/:id', authenticateToken, async (req, res) => {
   }
 });
 
+app.delete('/api/purchases/:id', authenticateToken, async (req, res) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    const { id } = req.params;
+    
+    // Check if purchase exists
+    const [purchases] = await connection.execute('SELECT id FROM purchases WHERE id = ?', [id]);
+    
+    if (purchases.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pembelian tidak ditemukan'
+      });
+    }
+    
+    // Get purchase items to reverse inventory
+    const [items] = await connection.execute(`
+      SELECT pi.product_id, pi.quantity, ib.id as batch_id, ib.quantity_remaining
+      FROM purchase_items pi
+      LEFT JOIN inventory_batches ib ON pi.product_id = ib.product_id AND ib.purchase_id = ?
+      WHERE pi.purchase_id = ?
+    `, [id, id]);
+    
+    // Reverse inventory for each item
+    for (const item of items) {
+      if (item.batch_id) {
+        // Reduce the remaining quantity in the batch
+        const newQuantityRemaining = Math.max(0, item.quantity_remaining - item.quantity);
+        await connection.execute(
+          'UPDATE inventory_batches SET quantity_remaining = ? WHERE id = ?',
+          [newQuantityRemaining, item.batch_id]
+        );
+        
+        // Record inventory movement for reversal
+        await connection.execute(
+          'INSERT INTO inventory_movements (product_id, batch_id, movement_type, quantity, reference_type, reference_id) VALUES (?, ?, ?, ?, ?, ?)',
+          [item.product_id, item.batch_id, 'out', item.quantity, 'purchase_deletion', id]
+        );
+      }
+    }
+    
+    // Delete purchase items
+    await connection.execute('DELETE FROM purchase_items WHERE purchase_id = ?', [id]);
+    
+    // Delete inventory movements related to this purchase
+    await connection.execute('DELETE FROM inventory_movements WHERE reference_type = ? AND reference_id = ?', ['purchase', id]);
+    
+    // Delete the purchase
+    await connection.execute('DELETE FROM purchases WHERE id = ?', [id]);
+    
+    await connection.commit();
+    
+    res.json({
+      success: true,
+      message: 'Pembelian berhasil dihapus'
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Delete purchase error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Terjadi kesalahan pada server'
+    });
+  } finally {
+    connection.release();
+  }
+});
+
 // =============== SALES ROUTES (FIFO Implementation) ===============
 app.post('/api/sales', authenticateToken, async (req, res) => {
   const connection = await pool.getConnection();
@@ -1104,6 +1175,93 @@ app.get('/api/sales/:id', authenticateToken, async (req, res) => {
       success: false,
       message: 'Terjadi kesalahan pada server'
     });
+  }
+});
+
+app.delete('/api/sales/:id', authenticateToken, async (req, res) => {
+  const connection = await pool.getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    const { id } = req.params;
+    
+    // Check if sale exists
+    const [sales] = await connection.execute('SELECT id FROM sales WHERE id = ?', [id]);
+    
+    if (sales.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Penjualan tidak ditemukan'
+      });
+    }
+    
+    // Get sale items to reverse inventory
+    const [items] = await connection.execute(`
+      SELECT si.product_id, si.quantity
+      FROM sale_items si
+      WHERE si.sale_id = ?
+    `, [id]);
+    
+    // Reverse inventory for each item (restore stock)
+    for (const item of items) {
+      // Find the most recent inventory movements for this sale to reverse them
+      const [movements] = await connection.execute(`
+        SELECT im.*, ib.id as batch_id, ib.quantity_remaining
+        FROM inventory_movements im
+        LEFT JOIN inventory_batches ib ON im.batch_id = ib.id
+        WHERE im.reference_type = ? AND im.reference_id = ? AND im.product_id = ?
+        ORDER BY im.id DESC
+      `, ['sale', id, item.product_id]);
+      
+      let remainingQuantityToRestore = item.quantity;
+      
+      for (const movement of movements) {
+        if (remainingQuantityToRestore <= 0) break;
+        
+        const quantityToRestore = Math.min(remainingQuantityToRestore, movement.quantity);
+        const newQuantityRemaining = movement.quantity_remaining + quantityToRestore;
+        
+        // Restore quantity to the batch
+        await connection.execute(
+          'UPDATE inventory_batches SET quantity_remaining = ? WHERE id = ?',
+          [newQuantityRemaining, movement.batch_id]
+        );
+        
+        // Record inventory movement for restoration
+        await connection.execute(
+          'INSERT INTO inventory_movements (product_id, batch_id, movement_type, quantity, reference_type, reference_id) VALUES (?, ?, ?, ?, ?, ?)',
+          [item.product_id, movement.batch_id, 'in', quantityToRestore, 'sale_deletion', id]
+        );
+        
+        remainingQuantityToRestore -= quantityToRestore;
+      }
+    }
+    
+    // Delete sale items
+    await connection.execute('DELETE FROM sale_items WHERE sale_id = ?', [id]);
+    
+    // Delete inventory movements related to this sale
+    await connection.execute('DELETE FROM inventory_movements WHERE reference_type = ? AND reference_id = ?', ['sale', id]);
+    
+    // Delete the sale
+    await connection.execute('DELETE FROM sales WHERE id = ?', [id]);
+    
+    await connection.commit();
+    
+    res.json({
+      success: true,
+      message: 'Penjualan berhasil dihapus'
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Delete sale error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Terjadi kesalahan pada server'
+    });
+  } finally {
+    connection.release();
   }
 });
 

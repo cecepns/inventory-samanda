@@ -85,6 +85,7 @@ export const purchaseAPI = {
   getPurchases: () => api.get('/purchases'),
   getPurchase: (id) => api.get(`/purchases/${id}`),
   createPurchase: (purchaseData) => api.post('/purchases', purchaseData),
+  deletePurchase: (id) => api.delete(`/purchases/${id}`),
 };
 
 // Sale API
@@ -92,6 +93,7 @@ export const saleAPI = {
   getSales: () => api.get('/sales'),
   getSale: (id) => api.get(`/sales/${id}`),
   createSale: (saleData) => api.post('/sales', saleData),
+  deleteSale: (id) => api.delete(`/sales/${id}`),
 };
 
 // Dashboard API

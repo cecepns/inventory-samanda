@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Eye, Search, TrendingUp, Calendar } from 'lucide-react';
+import { Plus, Eye, Search, TrendingUp, Calendar, Trash2 } from 'lucide-react';
 import { saleAPI } from '../../services/api';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import Modal from '../Common/Modal';
@@ -13,6 +13,9 @@ const SaleList = () => {
   const [showModal, setShowModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedSale, setSelectedSale] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [saleToDelete, setSaleToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchSales();
@@ -55,6 +58,33 @@ const SaleList = () => {
   const handleSaveSale = () => {
     fetchSales();
     handleCloseModal();
+  };
+
+  const handleDeleteSale = (sale) => {
+    setSaleToDelete(sale);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteSale = async () => {
+    if (!saleToDelete) return;
+    
+    setDeleting(true);
+    try {
+      await saleAPI.deleteSale(saleToDelete.id);
+      await fetchSales();
+      setShowDeleteModal(false);
+      setSaleToDelete(null);
+    } catch (error) {
+      console.error('Error deleting sale:', error);
+      alert('Gagal menghapus penjualan. Silakan coba lagi.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const cancelDeleteSale = () => {
+    setShowDeleteModal(false);
+    setSaleToDelete(null);
   };
 
   const formatCurrency = (amount) => {
@@ -136,13 +166,22 @@ const SaleList = () => {
                     {formatCurrency(sale.total_amount)}
                   </td>
                   <td className="px-6 py-4 text-center">
-                    <button
-                      onClick={() => handleViewDetail(sale)}
-                      className="p-2 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
-                      title="Lihat Detail"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-center space-x-2">
+                      <button
+                        onClick={() => handleViewDetail(sale)}
+                        className="p-2 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
+                        title="Lihat Detail"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSale(sale)}
+                        className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                        title="Hapus Penjualan"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -184,6 +223,55 @@ const SaleList = () => {
             onClose={handleCloseDetailModal}
           />
         )}
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={cancelDeleteSale}
+        title="Konfirmasi Hapus"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-700">
+            Apakah Anda yakin ingin menghapus penjualan ini?
+          </p>
+          {saleToDelete && (
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <p className="text-sm text-gray-600">
+                <strong>ID:</strong> #{saleToDelete.id}
+              </p>
+              <p className="text-sm text-gray-600">
+                <strong>Pelanggan:</strong> {saleToDelete.customer_name || 'Tanpa Pelanggan'}
+              </p>
+              <p className="text-sm text-gray-600">
+                <strong>Total:</strong> {formatCurrency(saleToDelete.total_amount)}
+              </p>
+              <p className="text-sm text-gray-600">
+                <strong>Tanggal:</strong> {new Date(saleToDelete.sale_date).toLocaleDateString('id-ID')}
+              </p>
+            </div>
+          )}
+          <p className="text-sm text-red-600 font-medium">
+            ⚠️ Tindakan ini akan menghapus penjualan dan mengembalikan stok ke kondisi sebelumnya.
+          </p>
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={cancelDeleteSale}
+              className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              disabled={deleting}
+            >
+              Batal
+            </button>
+            <button
+              onClick={confirmDeleteSale}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+              disabled={deleting}
+            >
+              {deleting ? 'Menghapus...' : 'Hapus'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
