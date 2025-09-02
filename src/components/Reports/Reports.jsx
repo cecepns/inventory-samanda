@@ -98,13 +98,37 @@ const Reports = () => {
     
     if (reportType === 'stock') {
       title = 'Laporan Persediaan Barang';
-      columns = ['Nama Produk', 'SKU', 'Kategori', 'Stok'];
-      rows = data.map(item => [
-        item.name,
-        item.sku,
-        item.category_name || '-',
-        `${item.current_stock} unit`
-      ]);
+      columns = ['Nama Produk', 'SKU', 'Kategori', 'Stok', 'Tanggal Masuk', 'Qty', 'Harga Beli', 'Supplier'];
+      
+      // Flatten data to show each batch as a separate row
+      rows = [];
+      data.forEach(item => {
+        if (item.batches && item.batches.length > 0) {
+          item.batches.forEach((batch, index) => {
+            rows.push([
+              index === 0 ? item.name : '', // Only show product name on first row
+              index === 0 ? item.sku : '',
+              index === 0 ? (item.category_name || '-') : '',
+              index === 0 ? `${item.current_stock} unit` : '',
+              new Date(batch.purchase_date || batch.batch_date).toLocaleDateString('id-ID'),
+              `${batch.quantity_remaining} pcs`,
+              formatCurrency(batch.purchase_price),
+              batch.supplier_name || '-'
+            ]);
+          });
+        } else {
+          rows.push([
+            item.name,
+            item.sku,
+            item.category_name || '-',
+            `${item.current_stock} unit`,
+            '-',
+            '-',
+            '-',
+            '-'
+          ]);
+        }
+      });
     } else if (reportType === 'stock-in') {
       title = 'Laporan Barang Masuk';
       if (dateRange.start_date && dateRange.end_date) {
@@ -271,9 +295,8 @@ const Reports = () => {
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Nama Produk</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">SKU</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Kategori</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Stok</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Batch Tertua</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Batch Terbaru</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Total Stok</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Detail Batch</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -293,11 +316,31 @@ const Reports = () => {
                             {item.current_stock} unit
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {item.oldest_batch_date ? new Date(item.oldest_batch_date).toLocaleDateString('id-ID') : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {item.newest_batch_date ? new Date(item.newest_batch_date).toLocaleDateString('id-ID') : '-'}
+                        <td className="px-4 py-3 text-sm">
+                          {item.batches && item.batches.length > 0 ? (
+                            <div className="space-y-1">
+                              {item.batches.map((batch, batchIndex) => (
+                                <div key={batchIndex} className="flex flex-col bg-gray-50 p-2 rounded text-xs">
+                                  <div className="flex justify-between items-center">
+                                    <span className="font-medium text-blue-600">
+                                      {new Date(batch.purchase_date || batch.batch_date).toLocaleDateString('id-ID')}
+                                    </span>
+                                    <span className="text-gray-600">{batch.quantity_remaining} pcs</span>
+                                  </div>
+                                  <div className="flex justify-between items-center mt-1">
+                                    <span className="text-green-600 font-medium">
+                                      {formatCurrency(batch.purchase_price)}
+                                    </span>
+                                    <span className="text-gray-500">
+                                      {batch.supplier_name || 'Tanpa Supplier'}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 italic">Tidak ada data batch</span>
+                          )}
                         </td>
                       </tr>
                     ))}

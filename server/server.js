@@ -1345,6 +1345,21 @@ app.get('/api/reports/stock', authenticateToken, async (req, res) => {
       ORDER BY p.name ASC
     `);
 
+    // Get detailed batch information for each product
+    for (let product of stockReport) {
+      const [batches] = await pool.execute(`
+        SELECT ib.quantity_remaining, ib.purchase_price, ib.batch_date,
+               pu.purchase_date, s.name as supplier_name
+        FROM inventory_batches ib
+        LEFT JOIN purchases pu ON ib.purchase_id = pu.id
+        LEFT JOIN suppliers s ON pu.supplier_id = s.id
+        WHERE ib.product_id = ? AND ib.quantity_remaining > 0
+        ORDER BY ib.batch_date ASC
+      `, [product.id]);
+      
+      product.batches = batches;
+    }
+
     res.json({
       success: true,
       data: stockReport
